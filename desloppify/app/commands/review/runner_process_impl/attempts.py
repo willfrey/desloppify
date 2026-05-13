@@ -72,13 +72,20 @@ def _run_via_popen(
     ctx: _AttemptContext,
     interval: float,
     stall_seconds: int,
+    stdin_text: str | None = None,
     stdout_text_observer: Callable[[str], None] | None = None,
 ) -> _ExecutionResult:
     with _managed_live_writer(state, ctx, interval):
-        process_or_error = _start_runner_process(cmd, deps, ctx)
+        process_or_error = _start_runner_process(
+            cmd,
+            deps,
+            ctx,
+            stdin_pipe=stdin_text is not None,
+        )
         if isinstance(process_or_error, _ExecutionResult):
             return process_or_error
         process = process_or_error
+        _write_runner_stdin(process, stdin_text)
         stdout_thread, stderr_thread = _start_stream_threads(
             process,
             state,
@@ -108,12 +115,15 @@ def _start_runner_process(
     cmd: list[str],
     deps: CodexBatchRunnerDeps,
     ctx: _AttemptContext,
+    *,
+    stdin_pipe: bool = False,
 ) -> subprocess.Popen[str] | _ExecutionResult:
     try:
         return deps.subprocess_popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE if stdin_pipe else None,
             text=True,
             bufsize=1,
         )
@@ -136,6 +146,20 @@ def _start_runner_process(
             exc=exc,
             exit_code=1,
         )
+
+
+def _write_runner_stdin(
+    process: subprocess.Popen[str],
+    stdin_text: str | None,
+) -> None:
+    """Send prompt text to runners invoked with ``-`` and close stdin."""
+    if stdin_text is None or process.stdin is None:
+        return
+    try:
+        process.stdin.write(stdin_text)
+        process.stdin.close()
+    except (BrokenPipeError, OSError, ValueError):
+        return
 
 
 def _start_stream_threads(
@@ -263,15 +287,18 @@ def _run_via_subprocess(
     state: _RunnerState,
     ctx: _AttemptContext,
     interval: float,
+    stdin_text: str | None = None,
 ) -> _ExecutionResult:
     with _managed_live_writer(state, ctx, interval):
         try:
-            result = deps.subprocess_run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=deps.timeout_seconds,
-            )
+            run_kwargs = {
+                "capture_output": True,
+                "text": True,
+                "timeout": deps.timeout_seconds,
+            }
+            if stdin_text is not None:
+                run_kwargs["input"] = stdin_text
+            result = deps.subprocess_run(cmd, **run_kwargs)
         except deps.timeout_error:
             return _ExecutionResult(code=124, stdout_text="", stderr_text="", timed_out=True)
         except OSError as exc:
@@ -342,6 +369,7 @@ def run_batch_attempt(
     use_popen: bool,
     live_log_interval: float,
     stall_seconds: int,
+    stdin_text: str | None = None,
     stdout_text_observer: Callable[[str], None] | None = None,
 ) -> tuple[str, _ExecutionResult]:
     header = f"ATTEMPT {attempt}/{max_attempts}\n$ {' '.join(cmd)}"
@@ -365,10 +393,18 @@ def run_batch_attempt(
             ctx,
             live_log_interval,
             stall_seconds,
+            stdin_text,
             stdout_text_observer,
         )
     else:
-        result = _run_via_subprocess(cmd, deps, state, ctx, live_log_interval)
+        result = _run_via_subprocess(
+            cmd,
+            deps,
+            state,
+            ctx,
+            live_log_interval,
+            stdin_text,
+        )
     return header, result
 
 
