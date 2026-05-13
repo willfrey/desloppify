@@ -188,6 +188,46 @@ def test_render_batch_prompt_loads_context_updates_example() -> None:
     assert "context_updates example" in prompt
 
 
+def test_render_batch_prompt_includes_known_persona() -> None:
+    prompt = prompt_template_mod.render_batch_prompt(
+        repo_root=Path("/tmp/repo"),
+        packet_path=Path("/tmp/repo/query.blind.json"),
+        batch_index=0,
+        batch={
+            "name": "B1",
+            "why": "test",
+            "dimensions": ["logic_clarity"],
+            "persona": "Architect",
+        },
+    )
+
+    assert "REVIEWER PERSONA: Architect" in prompt
+    assert "structural contracts" in prompt
+
+
+def test_render_batch_prompt_omits_absent_or_unknown_persona() -> None:
+    base = {
+        "name": "B1",
+        "why": "test",
+        "dimensions": ["logic_clarity"],
+    }
+    no_persona = prompt_template_mod.render_batch_prompt(
+        repo_root=Path("/tmp/repo"),
+        packet_path=Path("/tmp/repo/query.blind.json"),
+        batch_index=0,
+        batch=base,
+    )
+    unknown = prompt_template_mod.render_batch_prompt(
+        repo_root=Path("/tmp/repo"),
+        packet_path=Path("/tmp/repo/query.blind.json"),
+        batch_index=0,
+        batch={**base, "persona": "Unknown"},
+    )
+
+    assert "REVIEWER PERSONA" not in no_persona
+    assert "REVIEWER PERSONA" not in unknown
+
+
 def _safe_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
