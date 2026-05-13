@@ -12,24 +12,6 @@ ASSERT_PATTERNS = [
     re.compile(p)
     for p in [
         r"\bexpect_\w+\s*\(",
-        r"\bexpect_equal\s*\(",
-        r"\bexpect_identical\s*\(",
-        r"\bexpect_true\s*\(",
-        r"\bexpect_false\s*\(",
-        r"\bexpect_error\s*\(",
-        r"\bexpect_warning\s*\(",
-        r"\bexpect_message\s*\(",
-        r"\bexpect_match\s*\(",
-        r"\bexpect_is\s*\(",
-        r"\bexpect_output\s*\(",
-        r"\bexpect_s3_class\s*\(",
-        r"\bexpect_s4_class\s*\(",
-        r"\bexpect_length\s*\(",
-        r"\bexpect_type\s*\(",
-        r"\bexpect_null\s*\(",
-        r"\bexpect_gt\s*\(",
-        r"\bexpect_lt\s*\(",
-        r"\bexpect_failure\s*\(",
         r"\bverify_output\s*\(",
     ]
 ]
