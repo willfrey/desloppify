@@ -22,7 +22,7 @@
   "stage3": {
     "decision": "IMPLEMENT",
     "reasoning": "Implemented the accepted discoverability fix without relaxing any validation. `desloppify plan triage --stage <stage> --show-requirements` now prints that stage's validation requirements before a report is submitted, and `--show-requirements` without `--stage` prints every stage. The path intentionally runs before loading live state so users can inspect requirements even when a plan is not currently ready.",
-    "commit": "c68a199a",
+    "commit": "3a66f1be",
     "changes_applied": [
       "Added the `--show-requirements` triage CLI flag.",
       "Added a reusable validation requirement renderer backed by the existing stage prompt requirement text.",

@@ -17,7 +17,7 @@
   "stage3": {
     "decision": "IMPLEMENT",
     "reasoning": "Implemented the simpler accepted fix: queue-drain cleanup still clears the active plan_start_scores snapshot and create-plan cycle marker, but it no longer clears previous_plan_start_scores. That sentinel is what prevents workflow::communicate-score from being re-auto-resolved after the score has already been communicated for the cycle.",
-    "commit": "c68a199a",
+    "commit": "3a66f1be",
     "changes_applied": [
       "Stopped _clear_plan_start_scores_if_queue_empty from clearing the communicate-score sentinel.",
       "Added regression coverage that queue-drain cleanup preserves previous_plan_start_scores while still clearing create_plan_resolved_this_cycle."
