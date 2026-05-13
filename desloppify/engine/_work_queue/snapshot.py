@@ -272,16 +272,16 @@ def _phase_for_snapshot(
 ) -> str:
     has_execution = bool(anchored_execution_items or explicit_queue_items)
     raw_phase = current_lifecycle_phase(plan) if isinstance(plan, dict) else None
-    has_explicit_review_execution = any(
-        is_review_work_item(item) for item in explicit_queue_items
-    )
+    persisted_phase = None
+    if isinstance(plan, dict) and isinstance(plan.get("refresh_state"), dict):
+        persisted_phase = plan["refresh_state"].get("lifecycle_phase")
     # Suppress postflight signals (assessment/workflow/triage/review) when
-    # execution work exists and we're in execute mode, have no plan, or the
-    # durable plan explicitly queued imported review findings. Objective work
-    # discovered during postflight remains backlog-only until postflight ends,
-    # but review findings imported into queue_order must stay executable.
+    # execution work exists and the persisted lifecycle is explicitly in
+    # execute mode, or when we have no plan context. Objective work discovered
+    # during postflight remains backlog-only until postflight ends; queued
+    # review findings still belong to the review postflight phase.
     suppress_postflight_signals = has_execution and (
-        raw_phase == "execute" or raw_phase is None or has_explicit_review_execution
+        persisted_phase == "execute" or raw_phase is None
     )
     prefer_scan = raw_phase == "execute" and not has_execution
     if suppress_postflight_signals:

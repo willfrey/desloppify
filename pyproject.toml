@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "desloppify"
-version = "0.9.16"
+version = "1.0"
 description = "Multi-language codebase health scanner and technical debt tracker"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["code-quality", "technical-debt", "linter", "static-analysis", "refactoring"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
 
