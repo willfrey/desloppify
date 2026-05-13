@@ -17,7 +17,7 @@
   "stage3": {
     "decision": "IMPLEMENT",
     "reasoning": "Implemented both accepted failure-mode fixes. Prepared review packets now include the reusable invocation contract, so `review --run-batches` can honor a prior targeted `review --prepare` when the path, state, dimensions, retrospective options, and redacted config match. The Codex batch runner now invokes `codex exec -` and sends the rendered prompt over stdin on Windows and for large prompts, avoiding Windows `.cmd` command-line length failures while keeping existing short argv behavior elsewhere.",
-    "commit": "6561b436",
+    "commit": "676b510e",
     "changes_applied": [
       "Added `prepared_packet_contract` to packets built by the shared review packet builder used by prepare/external flows.",
       "Changed Codex batch command construction to use stdin for Windows prompts and large prompts.",

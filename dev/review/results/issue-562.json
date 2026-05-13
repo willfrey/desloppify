@@ -16,7 +16,7 @@
   "stage3": {
     "decision": "CLOSE_FIXED",
     "reasoning": "Closed as fixed by the same prepared-packet contract change implemented for #541. `review --prepare --dimensions X` now writes contract metadata into `query.json`, allowing a following `review --run-batches --dry-run` without explicit dimensions to reuse the one-dimension prepared packet instead of rebuilding the full default dimension set.",
-    "commit": "6561b436",
+    "commit": "676b510e",
     "changes_applied": [
       "Added reusable contract metadata to prepared review packets.",
       "Added regression coverage that the shared packet builder preserves targeted dimensions in the contract."
