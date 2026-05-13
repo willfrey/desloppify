@@ -322,7 +322,13 @@ def _add_suppress_parser(sub) -> None:
     p_suppress = sub.add_parser(
         "suppress", help="Permanently silence issues matching a pattern (false positives / accepted debt)"
     )
-    p_suppress.add_argument("pattern", help="File path, glob, or detector::prefix")
+    p_suppress.add_argument(
+        "pattern",
+        help=(
+            "File path, glob, or detector::prefix. Use detector::*::rule to keep "
+            "a suppression across file moves."
+        ),
+    )
     p_suppress.add_argument(
         "--attest",
         type=str,
