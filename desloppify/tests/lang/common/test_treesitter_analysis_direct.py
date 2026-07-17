@@ -242,8 +242,9 @@ def test_get_parser_warns_once_when_grammar_unavailable(caplog, monkeypatch):
     import tree_sitter_language_pack
 
     monkeypatch.setattr(tree_sitter_language_pack, "get_parser", _boom)
-    # The warn helper is cached; clear it so this test observes its own emission.
-    extractors_mod._warn_grammar_unavailable.cache_clear()
+    # The warn helper dedupes per grammar; reset it so this test observes its
+    # own emission.
+    extractors_mod._warned_grammars.clear()
 
     with caplog.at_level(logging.WARNING):
         for _ in range(3):
@@ -257,4 +258,4 @@ def test_get_parser_warns_once_when_grammar_unavailable(caplog, monkeypatch):
     ]
     assert len(warnings) == 1, "expected exactly one warning across three calls"
     assert "no findings" in warnings[0].getMessage()
-    extractors_mod._warn_grammar_unavailable.cache_clear()
+    extractors_mod._warned_grammars.clear()

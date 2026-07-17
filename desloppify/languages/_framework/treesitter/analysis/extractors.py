@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import functools
 import hashlib
 import logging
 from collections.abc import Callable
@@ -99,18 +98,24 @@ def _run_query(query, root_node) -> list[tuple[int, dict]]:
     return cursor.matches(root_node)
 
 
-@functools.cache
+_warned_grammars: set[str] = set()
+
+
 def _warn_grammar_unavailable(grammar: str, detail: str) -> None:
-    """Warn once per grammar that its tree-sitter detectors are inert.
+    """Warn once per grammar (per process) that its tree-sitter detectors are inert.
 
     Every caller of :func:`_get_parser` catches ``PARSE_INIT_ERRORS`` and
     returns an empty result, so an unusable grammar renders as "no findings" —
     indistinguishable from clean code. That silence is the failure mode worth
     surfacing: it reads as a passing scan for every language tree-sitter backs.
 
-    Cached so a broken install warns once per grammar rather than once per
-    file per detector.
+    Deduplicated on the grammar name alone so a broken install warns once per
+    grammar rather than once per file per detector, even if the failure detail
+    varies between attempts.
     """
+    if grammar in _warned_grammars:
+        return
+    _warned_grammars.add(grammar)
     logger.warning(
         "tree-sitter grammar %r is unavailable (%s); its detectors will report "
         "no findings for this scan. Install the parser extra with "
