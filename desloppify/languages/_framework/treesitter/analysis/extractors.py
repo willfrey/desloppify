@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import logging
 from collections.abc import Callable
@@ -10,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from desloppify.engine.detectors.base import ClassInfo, FunctionInfo
 
+from .. import PARSE_INIT_ERRORS
 from ..imports.cache import get_or_parse_tree
 from ..imports.normalize import normalize_body
 
@@ -97,12 +99,45 @@ def _run_query(query, root_node) -> list[tuple[int, dict]]:
     return cursor.matches(root_node)
 
 
-def _get_parser(grammar: str):
-    """Get a tree-sitter parser and language for the given grammar."""
-    from tree_sitter_language_pack import get_language, get_parser
+@functools.cache
+def _warn_grammar_unavailable(grammar: str, detail: str) -> None:
+    """Warn once per grammar that its tree-sitter detectors are inert.
 
-    parser = get_parser(grammar)
-    language = get_language(grammar)
+    Every caller of :func:`_get_parser` catches ``PARSE_INIT_ERRORS`` and
+    returns an empty result, so an unusable grammar renders as "no findings" —
+    indistinguishable from clean code. That silence is the failure mode worth
+    surfacing: it reads as a passing scan for every language tree-sitter backs.
+
+    Cached so a broken install warns once per grammar rather than once per
+    file per detector.
+    """
+    logger.warning(
+        "tree-sitter grammar %r is unavailable (%s); its detectors will report "
+        "no findings for this scan. Install the parser extra with "
+        "`pip install desloppify[treesitter]` — if it is already installed, the "
+        "grammar package may be broken for this Python version.",
+        grammar,
+        detail,
+    )
+
+
+def _get_parser(grammar: str):
+    """Get a tree-sitter parser and language for the given grammar.
+
+    Raises:
+        PARSE_INIT_ERRORS: If the language pack is missing or the grammar
+            cannot be loaded. Callers treat this as "no findings", so the
+            failure is warned about here — once per grammar — before it
+            becomes an empty result somewhere far away.
+    """
+    try:
+        from tree_sitter_language_pack import get_language, get_parser
+
+        parser = get_parser(grammar)
+        language = get_language(grammar)
+    except PARSE_INIT_ERRORS as exc:
+        _warn_grammar_unavailable(grammar, f"{type(exc).__name__}: {exc}")
+        raise
     return parser, language
 
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import desloppify.languages._framework.treesitter.analysis.complexity_function_metrics as function_metrics_mod
 import desloppify.languages._framework.treesitter.analysis.complexity_nesting as nesting_mod
 import desloppify.languages._framework.treesitter.analysis.extractors as extractors_mod
@@ -219,3 +221,40 @@ def test_unused_import_helpers_and_detection(monkeypatch) -> None:
     spec = SimpleNamespace(grammar="py", import_query="query")
     entries = unused_imports_mod.detect_unused_imports(["src/app.py"], spec)
     assert entries == [{"file": "src/app.py", "line": 1, "name": "module"}]
+
+
+def test_get_parser_warns_once_when_grammar_unavailable(caplog, monkeypatch):
+    """An unavailable grammar warns (not debug) so a dead scan isn't silent.
+
+    Every detector catches ``PARSE_INIT_ERRORS`` from ``_get_parser`` and
+    returns an empty result, so a broken language pack renders as "no findings"
+    — a passing scan for code that was never analyzed. The warning at the single
+    choke point is what makes that visible; this pins it, including the
+    once-per-grammar caching so a broken install doesn't warn per file.
+    """
+    import logging
+
+    def _boom(_grammar: str):
+        raise ImportError("no module named tree_sitter_language_pack")
+
+    # ``_get_parser`` imports ``get_parser`` from the language pack inside the
+    # function body, so patch it at its source module, not on extractors_mod.
+    import tree_sitter_language_pack
+
+    monkeypatch.setattr(tree_sitter_language_pack, "get_parser", _boom)
+    # The warn helper is cached; clear it so this test observes its own emission.
+    extractors_mod._warn_grammar_unavailable.cache_clear()
+
+    with caplog.at_level(logging.WARNING):
+        for _ in range(3):
+            with pytest.raises(extractors_mod.PARSE_INIT_ERRORS):
+                extractors_mod._get_parser("nonexistent-grammar")
+
+    warnings = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "nonexistent-grammar" in r.getMessage()
+    ]
+    assert len(warnings) == 1, "expected exactly one warning across three calls"
+    assert "no findings" in warnings[0].getMessage()
+    extractors_mod._warn_grammar_unavailable.cache_clear()
