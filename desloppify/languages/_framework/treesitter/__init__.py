@@ -13,12 +13,35 @@ New code and direct tests should import from the grouped namespaces above.
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
 
-from desloppify.base.output.fallbacks import log_best_effort_failure
+from desloppify.base.output.fallbacks import log_best_effort_failure, warn_best_effort
 from .types import TreeSitterLangSpec
 
 logger = logging.getLogger(__name__)
+
+
+def _warn_if_pack_installed_but_broken(exc: ImportError) -> None:
+    """Distinguish a broken language-pack install from an absent one.
+
+    An intentionally minimal install (no ``treesitter`` extra) should stay
+    quiet — a python-only user opted out of these grammars. But when the
+    distribution's metadata is present and the module still fails to import
+    (e.g. the 1.6.3 cp314 wheel, which ships no importable package), every
+    tree-sitter language would silently scan as "no findings" — so warn.
+    """
+    try:
+        version = importlib.metadata.version("tree-sitter-language-pack")
+    except importlib.metadata.PackageNotFoundError:
+        return
+    warn_best_effort(
+        f"tree-sitter-language-pack {version} is installed but failed to import "
+        f"({type(exc).__name__}: {exc}); every tree-sitter language (Go, Rust, "
+        "Bash, TypeScript, …) will report no findings. The package may be "
+        "broken for this Python version — try upgrading it."
+    )
+
 
 _AVAILABLE = False
 try:
@@ -27,6 +50,7 @@ try:
     _AVAILABLE = True
 except ImportError as exc:
     log_best_effort_failure(logger, "import tree_sitter_language_pack", exc)
+    _warn_if_pack_installed_but_broken(exc)
 
 
 def is_available() -> bool:

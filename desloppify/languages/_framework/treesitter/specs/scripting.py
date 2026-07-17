@@ -122,10 +122,13 @@ ZIG_SPEC = TreeSitterLangSpec(
 
 NIM_SPEC = TreeSitterLangSpec(
     grammar="nim",
+    # tree-sitter-nim exposes every routine kind (proc / func / method /
+    # iterator / template / macro) as a single `routine` node, and names its
+    # children positionally — there are no `name:` / `body:` fields to match on.
     function_query="""
-        (proc_declaration
-            name: (identifier) @name
-            body: (statement_list) @body) @func
+        (routine
+            (symbol) @name
+            (block) @body) @func
     """,
     comment_node_types=frozenset({"comment"}),
     log_patterns=(

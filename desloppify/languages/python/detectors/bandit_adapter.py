@@ -24,6 +24,7 @@ import logging
 import re
 import subprocess  # nosec B404
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -142,39 +143,62 @@ _NOQA_RE = re.compile(
 )
 
 
-def _line_suppressed_by_ruff_noqa(
-    filepath: str, line_number: int, test_id: str
+def _statement_suppressed_by_ruff_noqa(
+    filepath: str, line_numbers: Sequence[int], test_id: str
 ) -> bool:
-    """Return True if the flagged source line carries a ruff ``noqa`` for *test_id*.
+    """Return True if the flagged statement carries a ruff ``noqa`` for *test_id*.
 
     Honors ruff's flake8-bandit suppressions the way Bandit honors its own
-    ``nosec``: a bare ``noqa`` suppresses every check on the line, and
+    ``nosec``: a bare ``noqa`` suppresses every check on the statement, and
     ``noqa: S608`` (optionally among other codes) suppresses the Bandit test
     whose number matches — ``B608``. Without this, every ruff-suppressed site is
     reported twice: silenced by ruff, re-flagged by Bandit. Bandit strips its own
     ``nosec`` lines before results reach this adapter, so only the ruff form is
     handled here.
+
+    *line_numbers* is the statement's full extent (Bandit's ``line_range``), but
+    only its two *anchor* lines are consulted: the first (where Bandit reports a
+    multi-line statement) and the last (where ruff attaches its diagnostic and
+    therefore honors a ``noqa``). A multi-line SQL f-string is the common case:
+    Bandit flags the ``f\"\"\"`` opener, ruff wants the marker on the closing
+    line. Matching on the reported line alone misses precisely the suppressions
+    this function exists to honor — but scanning the interior lines too would
+    over-suppress: a bare ``noqa`` aimed at an unrelated rule on an interior
+    line, or ``# noqa`` text inside the string content, would drop a genuine
+    finding that ruff itself still reports.
     """
-    if line_number <= 0 or not (test_id.startswith("B") and test_id[1:].isdigit()):
+    if not (test_id.startswith("B") and test_id[1:].isdigit()):
         return False
+    extent = [n for n in line_numbers if n > 0]
+    if not extent:
+        return False
+    wanted = {min(extent), max(extent)}
+    last_wanted = max(wanted)
     path = Path(filepath)
     if not path.is_absolute():
         path = get_project_root() / filepath
+    lines: list[str] = []
     try:
         with path.open(encoding="utf-8", errors="replace") as handle:
-            line = next(
-                (text for i, text in enumerate(handle, start=1) if i == line_number),
-                "",
-            )
+            for i, text in enumerate(handle, start=1):
+                if i in wanted:
+                    lines.append(text)
+                if i >= last_wanted:
+                    break
     except OSError:
         return False
+    ruff_code = f"S{test_id[1:]}"  # ``B608`` -> ``S608``
+    return any(_line_carries_noqa(line, ruff_code) for line in lines)
+
+
+def _line_carries_noqa(line: str, ruff_code: str) -> bool:
+    """Return True if *line* has a bare ``noqa`` or one naming *ruff_code*."""
     match = _NOQA_RE.search(line)
     if match is None:
         return False
     codes = match.group("codes")
     if codes is None:
         return True  # bare ``noqa`` suppresses every check on the line
-    ruff_code = f"S{test_id[1:]}"  # ``B608`` -> ``S608``
     return ruff_code.casefold() in {
         token.casefold() for token in re.split(r"[,\s]+", codes.strip()) if token
     }
@@ -202,7 +226,10 @@ def _to_security_entry(
         return None
 
     line = result.get("line_number", 0)
-    if _line_suppressed_by_ruff_noqa(filepath, line, test_id):
+    # ``line_range`` spans a multi-line statement; ruff anchors its ``noqa`` on
+    # the closing line, not the opening one Bandit reports.
+    line_range = result.get("line_range") or [line]
+    if _statement_suppressed_by_ruff_noqa(filepath, line_range, test_id):
         return None
 
     raw_severity = result.get("issue_severity", "MEDIUM").upper()
