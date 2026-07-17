@@ -124,6 +124,51 @@ def test_to_security_entry_reports_when_line_has_no_noqa(tmp_path):
     assert isinstance(entry, dict)
 
 
+_MULTILINE_SQL = '''row = conn.execute(
+    f"""
+    SELECT {col}
+    FROM {table}
+    """  # noqa: S608
+).fetchone()
+'''
+
+
+def test_to_security_entry_honors_ruff_noqa_on_multiline_statement(tmp_path):
+    """A ``noqa`` anywhere in the statement's ``line_range`` suppresses it.
+
+    Bandit reports the opening line of a multi-line f-string while ruff requires
+    the marker on the closing line, so matching the reported line alone would
+    miss the suppression.
+    """
+    src = tmp_path / "q.py"
+    src.write_text(_MULTILINE_SQL)
+    result = _result_for_file(src, line_number=2)
+    result["line_range"] = [2, 3, 4, 5]
+    entry = adapter_mod._to_security_entry(result, _StubZoneMap(Zone.PRODUCTION))
+    assert entry is None
+
+
+def test_to_security_entry_reports_multiline_statement_without_noqa(tmp_path):
+    """A multi-line statement carrying no ``noqa`` is still reported."""
+    src = tmp_path / "q.py"
+    src.write_text(_MULTILINE_SQL.replace("  # noqa: S608", ""))
+    result = _result_for_file(src, line_number=2)
+    result["line_range"] = [2, 3, 4, 5]
+    entry = adapter_mod._to_security_entry(result, _StubZoneMap(Zone.PRODUCTION))
+    assert isinstance(entry, dict)
+    assert entry["detail"]["kind"] == "B608"
+
+
+def test_to_security_entry_noqa_outside_line_range_does_not_suppress(tmp_path):
+    """A ``noqa`` on an unrelated neighbouring line must not leak suppression."""
+    src = tmp_path / "q.py"
+    src.write_text('other = 1  # noqa: S608\nq = f"SELECT * FROM {t}"\n')
+    result = _result_for_file(src, line_number=2)
+    result["line_range"] = [2]
+    entry = adapter_mod._to_security_entry(result, _StubZoneMap(Zone.PRODUCTION))
+    assert isinstance(entry, dict)
+
+
 def test_detect_with_bandit_uses_absolute_scan_path(monkeypatch):
     captured: dict[str, object] = {}
 
