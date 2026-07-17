@@ -66,25 +66,28 @@ def test_treesitter_language_pack_floor_clears_broken_releases() -> None:
     ``<`` cap at or below the known-broken range.
     """
     optional = _optional_dependencies()
-    for extra in ("treesitter", "full"):
-        specs = optional.get(extra)
-        assert isinstance(specs, list), f"optional extra {extra!r} must be a list"
-        pack = next(
-            (s for s in specs if str(s).startswith("tree-sitter-language-pack")), None
+    specs = optional.get("treesitter")
+    assert isinstance(specs, list), "optional extra 'treesitter' must be a list"
+    # 'full' is covered transitively: test_full_extra_matches_union_of_other_extras
+    # pins its specs char-for-char to the union of the other extras.
+    packs = [s for s in specs if str(s).startswith("tree-sitter-language-pack")]
+    assert len(packs) == 1, (
+        "'treesitter' must declare exactly one tree-sitter-language-pack spec; "
+        f"a duplicate entry can silently reinstate the broken range: {packs!r}"
+    )
+    pack = packs[0]
+    floor = re.search(r">=\s*([0-9][0-9.]*)", str(pack))
+    assert floor is not None, f"pack spec must carry a >= floor: {pack!r}"
+    assert _version_tuple(floor.group(1)) >= (1, 12, 5), (
+        f"floor {floor.group(1)} is below 1.12.5, which is the first "
+        "release that is both #605-safe and has a working Python 3.14 wheel"
+    )
+    upper = re.search(r"<\s*([0-9][0-9.]*)", str(pack))
+    if upper is not None:
+        assert _version_tuple(upper.group(1)) > (1, 12, 5), (
+            f"re-caps tree-sitter-language-pack at {upper.group(1)}, "
+            "at or below the broken range — see this test's docstring"
         )
-        assert pack is not None, f"{extra!r} must declare tree-sitter-language-pack"
-        floor = re.search(r">=\s*([0-9][0-9.]*)", str(pack))
-        assert floor is not None, f"{extra!r} pack spec must carry a >= floor: {pack!r}"
-        assert _version_tuple(floor.group(1)) >= (1, 12, 5), (
-            f"{extra!r} floor {floor.group(1)} is below 1.12.5, which is the first "
-            "release that is both #605-safe and has a working Python 3.14 wheel"
-        )
-        upper = re.search(r"<\s*([0-9][0-9.]*)", str(pack))
-        if upper is not None:
-            assert _version_tuple(upper.group(1)) > (1, 12, 5), (
-                f"{extra!r} re-caps tree-sitter-language-pack at {upper.group(1)}, "
-                "at or below the broken range — see this test's docstring"
-            )
 
 
 def _version_tuple(text: str) -> tuple[int, ...]:

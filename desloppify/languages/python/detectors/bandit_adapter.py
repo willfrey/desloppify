@@ -156,25 +156,35 @@ def _statement_suppressed_by_ruff_noqa(
     ``nosec`` lines before results reach this adapter, so only the ruff form is
     handled here.
 
-    *line_numbers* is the statement's full extent (Bandit's ``line_range``), not
-    just the line it reports. The two tools anchor a multi-line statement
-    differently — Bandit reports the first line, while ruff requires the ``noqa``
-    on the line where the expression *ends*. A multi-line SQL f-string is the
-    common case: Bandit flags the ``f\"\"\"`` opener, ruff wants the marker on the
-    closing line. Matching on the reported line alone therefore misses precisely
-    the suppressions this function exists to honor.
+    *line_numbers* is the statement's full extent (Bandit's ``line_range``), but
+    only its two *anchor* lines are consulted: the first (where Bandit reports a
+    multi-line statement) and the last (where ruff attaches its diagnostic and
+    therefore honors a ``noqa``). A multi-line SQL f-string is the common case:
+    Bandit flags the ``f\"\"\"`` opener, ruff wants the marker on the closing
+    line. Matching on the reported line alone misses precisely the suppressions
+    this function exists to honor — but scanning the interior lines too would
+    over-suppress: a bare ``noqa`` aimed at an unrelated rule on an interior
+    line, or ``# noqa`` text inside the string content, would drop a genuine
+    finding that ruff itself still reports.
     """
     if not (test_id.startswith("B") and test_id[1:].isdigit()):
         return False
-    wanted = {n for n in line_numbers if n > 0}
-    if not wanted:
+    extent = [n for n in line_numbers if n > 0]
+    if not extent:
         return False
+    wanted = {min(extent), max(extent)}
+    last_wanted = max(wanted)
     path = Path(filepath)
     if not path.is_absolute():
         path = get_project_root() / filepath
+    lines: list[str] = []
     try:
         with path.open(encoding="utf-8", errors="replace") as handle:
-            lines = [text for i, text in enumerate(handle, start=1) if i in wanted]
+            for i, text in enumerate(handle, start=1):
+                if i in wanted:
+                    lines.append(text)
+                if i >= last_wanted:
+                    break
     except OSError:
         return False
     ruff_code = f"S{test_id[1:]}"  # ``B608`` -> ``S608``
@@ -216,8 +226,8 @@ def _to_security_entry(
         return None
 
     line = result.get("line_number", 0)
-    # ``line_range`` spans a multi-line statement; ruff's ``noqa`` may sit on any
-    # of those lines, not just the one Bandit reports.
+    # ``line_range`` spans a multi-line statement; ruff anchors its ``noqa`` on
+    # the closing line, not the opening one Bandit reports.
     line_range = result.get("line_range") or [line]
     if _statement_suppressed_by_ruff_noqa(filepath, line_range, test_id):
         return None

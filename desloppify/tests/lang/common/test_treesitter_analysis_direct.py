@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -232,19 +234,17 @@ def test_get_parser_warns_once_when_grammar_unavailable(caplog, monkeypatch):
     choke point is what makes that visible; this pins it, including the
     once-per-grammar caching so a broken install doesn't warn per file.
     """
-    import logging
-
     def _boom(_grammar: str):
         raise ImportError("no module named tree_sitter_language_pack")
 
-    # ``_get_parser`` imports ``get_parser`` from the language pack inside the
-    # function body, so patch it at its source module, not on extractors_mod.
-    import tree_sitter_language_pack
-
-    monkeypatch.setattr(tree_sitter_language_pack, "get_parser", _boom)
-    # The warn helper dedupes per grammar; reset it so this test observes its
-    # own emission.
-    extractors_mod._warned_grammars.clear()
+    # ``_get_parser`` imports from the language pack inside the function body; a
+    # fake ``sys.modules`` entry keeps this test runnable without the optional
+    # package installed (the core no-extras CI job collects this file).
+    fake_pack = SimpleNamespace(get_parser=_boom, get_language=_boom)
+    monkeypatch.setitem(sys.modules, "tree_sitter_language_pack", fake_pack)
+    # The warn helper dedupes per grammar; swap in fresh state so this test
+    # observes its own emission, restored by monkeypatch even on failure.
+    monkeypatch.setattr(extractors_mod, "_warned_grammars", set())
 
     with caplog.at_level(logging.WARNING):
         for _ in range(3):
@@ -258,4 +258,3 @@ def test_get_parser_warns_once_when_grammar_unavailable(caplog, monkeypatch):
     ]
     assert len(warnings) == 1, "expected exactly one warning across three calls"
     assert "no findings" in warnings[0].getMessage()
-    extractors_mod._warned_grammars.clear()

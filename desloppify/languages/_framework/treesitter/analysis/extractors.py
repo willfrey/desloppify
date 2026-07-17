@@ -8,6 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from desloppify.base.output.fallbacks import warn_best_effort
 from desloppify.engine.detectors.base import ClassInfo, FunctionInfo
 
 from .. import PARSE_INIT_ERRORS
@@ -104,10 +105,12 @@ _warned_grammars: set[str] = set()
 def _warn_grammar_unavailable(grammar: str, detail: str) -> None:
     """Warn once per grammar (per process) that its tree-sitter detectors are inert.
 
-    Every caller of :func:`_get_parser` catches ``PARSE_INIT_ERRORS`` and
-    returns an empty result, so an unusable grammar renders as "no findings" —
+    Detector callers of :func:`_get_parser` catch ``PARSE_INIT_ERRORS`` and
+    return an empty result, so an unusable grammar renders as "no findings" —
     indistinguishable from clean code. That silence is the failure mode worth
     surfacing: it reads as a passing scan for every language tree-sitter backs.
+    (The dep-graph path in ``imports/graph.py`` calls :func:`_get_parser`
+    unguarded, so there the warning precedes a propagating error instead.)
 
     Deduplicated on the grammar name alone so a broken install warns once per
     grammar rather than once per file per detector, even if the failure detail
@@ -116,14 +119,14 @@ def _warn_grammar_unavailable(grammar: str, detail: str) -> None:
     if grammar in _warned_grammars:
         return
     _warned_grammars.add(grammar)
-    logger.warning(
-        "tree-sitter grammar %r is unavailable (%s); its detectors will report "
-        "no findings for this scan. Install the parser extra with "
-        "`pip install desloppify[treesitter]` — if it is already installed, the "
-        "grammar package may be broken for this Python version.",
-        grammar,
-        detail,
+    message = (
+        f"tree-sitter grammar {grammar!r} is unavailable ({detail}); its "
+        "detectors will report no findings for this scan. Install the parser "
+        "extra with `pip install desloppify[treesitter]` — if it is already "
+        "installed, the grammar package may be broken for this Python version."
     )
+    warn_best_effort(message)
+    logger.warning("%s", message)
 
 
 def _get_parser(grammar: str):
@@ -131,8 +134,8 @@ def _get_parser(grammar: str):
 
     Raises:
         PARSE_INIT_ERRORS: If the language pack is missing or the grammar
-            cannot be loaded. Callers treat this as "no findings", so the
-            failure is warned about here — once per grammar — before it
+            cannot be loaded. Detector callers treat this as "no findings", so
+            the failure is warned about here — once per grammar — before it
             becomes an empty result somewhere far away.
     """
     try:

@@ -134,7 +134,7 @@ _MULTILINE_SQL = '''row = conn.execute(
 
 
 def test_to_security_entry_honors_ruff_noqa_on_multiline_statement(tmp_path):
-    """A ``noqa`` anywhere in the statement's ``line_range`` suppresses it.
+    """A ``noqa`` on the statement's closing line suppresses it.
 
     Bandit reports the opening line of a multi-line f-string while ruff requires
     the marker on the closing line, so matching the reported line alone would
@@ -152,6 +152,30 @@ def test_to_security_entry_reports_multiline_statement_without_noqa(tmp_path):
     """A multi-line statement carrying no ``noqa`` is still reported."""
     src = tmp_path / "q.py"
     src.write_text(_MULTILINE_SQL.replace("  # noqa: S608", ""))
+    result = _result_for_file(src, line_number=2)
+    result["line_range"] = [2, 3, 4, 5]
+    entry = adapter_mod._to_security_entry(result, _StubZoneMap(Zone.PRODUCTION))
+    assert isinstance(entry, dict)
+    assert entry["detail"]["kind"] == "B608"
+
+
+def test_to_security_entry_interior_noqa_text_does_not_suppress(tmp_path):
+    """``# noqa`` text on an interior line of the statement must not suppress.
+
+    Ruff only honors a ``noqa`` on the line it attributes the diagnostic to (the
+    statement's closing line), so a bare ``noqa`` aimed at an unrelated rule on
+    an interior line — or ``# noqa`` appearing inside the string content itself —
+    must not silently drop the finding ruff still reports.
+    """
+    src = tmp_path / "q.py"
+    src.write_text(
+        'row = conn.execute(\n'
+        '    f"""\n'
+        '    SELECT {col}  -- reviewed: # noqa\n'
+        '    FROM {table}\n'
+        '    """\n'
+        ').fetchone()\n'
+    )
     result = _result_for_file(src, line_number=2)
     result["line_range"] = [2, 3, 4, 5]
     entry = adapter_mod._to_security_entry(result, _StubZoneMap(Zone.PRODUCTION))
